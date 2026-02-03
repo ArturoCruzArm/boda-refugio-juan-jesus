@@ -12,14 +12,16 @@
 ## PARTE CONTRATANTE (EL CLIENTE)
 
 **Nombre completo:** Patricia Berenice Martinez Becerra
-**Domicilio:** Por confirmar
-**Teléfono:** Por confirmar
+**Domicilio:** Veracruz 1716, León, Guanajuato
+**Teléfono:** +52 1 477 591 6373
 
 **Nombre completo:** Mateus Sebastian Oliver Cordova Huerta
 **Domicilio:** Por confirmar
 **Teléfono:** Por confirmar
 
-**Contacto para coordinación:** Berenice Becerra (hermana de la novia)
+**Padres de la Novia:** Ramón Martínez Espinoza y Patricia Becerra Pacheco
+**Padres del Novio:** Por confirmar
+
 **Teléfono de contacto:** +52 1 477 591 6373
 
 En adelante denominados como **"LOS CONTRATANTES"** o **"LOS NOVIOS"**
@@ -107,12 +109,12 @@ El paquete incluye los siguientes servicios y productos:
 
 **Forma de pago:**
 
-1. **Anticipo:** $ Por confirmar
-   - **Estado:** Pendiente de recibir
-   - **Fecha de pago:** Por confirmar (cita programada 02/02/2026 a las 3PM)
-   - **Método:** Por confirmar
+1. **Anticipo:** $1,000.00 MXN
+   - **Estado:** ✅ PAGADO
+   - **Fecha de pago:** 02 de Febrero de 2026
+   - **Método:** Efectivo
 
-2. **Pago final:** $ Por confirmar
+2. **Pago final:** $5,500.00 MXN
    - **Fecha límite:** 22 de Mayo de 2026 (8 días antes del evento)
    - **Método:** Transferencia bancaria a la cuenta especificada
 
@@ -268,8 +270,8 @@ Fecha: _______________________
 
 | Fecha | Concepto | Monto | Método | Estado |
 |-------|----------|-------|--------|--------|
-| Por confirmar | Anticipo | $ Por confirmar | Por confirmar | ⏳ Pendiente |
-| 22/05/2026 | Pago final | $ Por confirmar | Transferencia | ⏳ Pendiente |
+| 02/02/2026 | Anticipo | $1,000.00 | Efectivo | ✅ Pagado |
+| 22/05/2026 | Pago final | $5,500.00 | Transferencia | ⏳ Pendiente |
 | **TOTAL** | | **$6,500.00** | | |
 
 ---
@@ -280,8 +282,8 @@ Fecha: _______________________
 - [x] Confirmar lugar de ceremonia (Parroquia San Juan Bautista de la Salle)
 - [x] Confirmar lugar de recepción (Salón Valantains, Hilario Medina)
 - [ ] Confirmar hora de recepción
-- [ ] Obtener domicilio de los novios
-- [ ] Recibir anticipo (cita 02/02/2026 a las 3PM)
+- [x] Obtener domicilio de la novia (Veracruz 1716)
+- [x] Recibir anticipo ($1,000 - 02/02/2026)
 - [ ] Programar sesión fotográfica previa (al menos 15 días antes)
 - [ ] LOS CONTRATANTES entregan fotos para videoclip (al menos 10 días antes)
 - [ ] Liquidación del saldo - 22/05/2026
