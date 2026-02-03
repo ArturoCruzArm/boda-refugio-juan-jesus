@@ -191,7 +191,7 @@ const photos = [
     'imagenes/foto7_0187.webp',
     'imagenes/foto7_0188.webp'
 ];
-const STORAGE_KEY = 'boda_daniel_paulina_photo_selections';
+const STORAGE_KEY = 'boda_berenice_oliver_photo_selections';
 const LIMITES = {
     ampliacion: 1,
     impresion: 50,
@@ -556,7 +556,7 @@ function saveModalSelection() {
 // ========================================
 function exportToJSON() {
     const exportData = {
-        evento: 'Boda Daniel & Paulina',
+        evento: 'Boda Berenice & Oliver',
         fecha_exportacion: new Date().toISOString(),
         total_fotos: photos.length,
         estadisticas: getStats(),
@@ -581,7 +581,7 @@ function exportToJSON() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `seleccion-fotos-boda-daniel-paulina-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `seleccion-fotos-boda-berenice-oliver-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
 
@@ -590,7 +590,7 @@ function exportToJSON() {
 
 function generateTextSummary() {
     const stats = getStats();
-    let summary = '💒 SELECCIÓN DE FOTOS - BODA DANIEL & PAULINA\n';
+    let summary = '💒 SELECCIÓN DE FOTOS - BODA BERENICE & OLIVER\n';
     summary += '═══════════════════════════════════════════════════\n\n';
     summary += `📋 SEGÚN CONTRATO:\n`;
     summary += `   🖼️  Ampliación requerida: ${LIMITES.ampliacion} foto (28x35 cm)\n`;

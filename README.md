@@ -1,4 +1,5 @@
 💒 Invitación de Boda Digital - Berenice & Oliver
+# Boda: 30 de Mayo de 2026 - León, Guanajuato
 Invitación web elegante con diseño inspirado en invitaciones botánicas de alta calidad, con peonías y eucalipto.
 
 🎨 Cambios Principales Implementados
@@ -80,7 +81,7 @@ Puedes usar un emoji: 💍 o 💐
 1. Estructura de Archivos
 Asegúrate de tener esta estructura:
 
-boda-daniel-paulina/
+boda-berenice-oliver/
 ├── index.html
 ├── styles.css
 ├── script.js
@@ -101,16 +102,16 @@ git add .
 git commit -m "Invitación de boda - Diseño actualizado"
 
 # 3. Conectar con GitHub
-git remote add origin https://github.com/TU_USUARIO/boda-paulina-daniel.git
+git remote add origin https://github.com/ArturoCruzArm/invitacion-boda-berenice-mateus.git
 git branch -M main
 git push -u origin main
 
 # 4. Activar GitHub Pages
 # Ve a: Settings → Pages → Source: main branch → Save
-Tu sitio estará en: https://TU_USUARIO.github.io/boda-paulina-daniel/
+Tu sitio estará en: https://boda-berenice-oliver.invitados.org/
 
 3. Opcional: Dominio Personalizado
-Si quieres un dominio como paulinaydaniel.com:
+Si quieres un dominio personalizado:
 
 Compra el dominio en Namecheap, GoDaddy, etc. (~$10-15 USD/año)
 En GitHub Pages settings, agrega el dominio personalizado
@@ -167,7 +168,7 @@ Antes de compartir la invitación, verifica:
 
 Contenido
  Nombres correctos de novios y padres
- Fecha y hora correctas (19 de Diciembre 2025, 7:00 PM)
+ Fecha y hora correctas (30 de Mayo 2026, 5:00 PM)
  Direcciones verificadas
  Links de Google Maps funcionando
  Links de Waze funcionando
@@ -212,7 +213,7 @@ El contador muestra números negativos
 Problema: La fecha ya pasó (modo de prueba) Solución: Verifica la fecha en script.js línea 36:
 
 javascript
-const weddingDate = new Date('2025-12-19T19:00:00').getTime();
+const weddingDate = new Date('2026-05-30T17:00:00').getTime();
 El sitio se ve mal en móvil
 Problema: Caché del navegador Solución:
 
@@ -281,5 +282,5 @@ Crea un código QR con tu URL
 Envía por email
 ¡Felicidades por tu boda! 💑✨
 
-Desarrollado con amor para Paulina & Daniel 19 de Diciembre, 2025
+Desarrollado con amor para Berenice & Oliver - 30 de Mayo, 2026
 
