@@ -194,7 +194,7 @@ const photos = [
 const STORAGE_KEY = 'boda_berenice_oliver_photo_selections';
 const LIMITES = {
     ampliacion: 1,
-    impresion: 50,
+    impresion: 100,
     invitacion: null
 };
 let photoSelections = {};
@@ -593,7 +593,7 @@ function generateTextSummary() {
     let summary = '💒 SELECCIÓN DE FOTOS - BODA BERENICE & OLIVER\n';
     summary += '═══════════════════════════════════════════════════\n\n';
     summary += `📋 SEGÚN CONTRATO:\n`;
-    summary += `   🖼️  Ampliación requerida: ${LIMITES.ampliacion} foto (28x35 cm)\n`;
+    summary += `   🖼️  Ampliación requerida: ${LIMITES.ampliacion} foto (50x60 cm)\n`;
     summary += `   📸 Impresión requerida: ${LIMITES.impresion} fotos (5x7")\n\n`;
     summary += `📊 RESUMEN ACTUAL:\n`;
     summary += `   Total de fotos: ${photos.length}\n`;

@@ -75,7 +75,7 @@
 ✅ **Invitación Web:** $500 MXN
 
 #### Servicios NO incluidos (disponibles):
-- ❌ Tomas de dron (disponible por $1,200 adicionales)
+- ❌ Tomas de dron (disponible por $500 adicionales)
 - ❌ Hora extra ($500 por hora adicional)
 
 ### Forma de Pago
