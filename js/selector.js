@@ -554,7 +554,7 @@ function saveModalSelection() {
 // ========================================
 function exportToJSON() {
     const exportData = {
-        evento: 'Boda Alan & Lupita',
+        evento: 'Boda Refugio & Juan Jesús',
         fecha_exportacion: new Date().toISOString(),
         total_fotos: photos.length,
         estadisticas: getStats(),
