@@ -2,7 +2,7 @@
 // INICIALIZACIÓN
 // ===================================
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('%c💍 ¡Bienvenido a nuestra invitación de boda! 💍',
+    console.log('%c💎 ¡Bienvenido a la invitación de Bodas de Diamante! 💎',
         'font-size: 20px; color: #4A6B54; font-weight: bold;');
 
     // Inicializar loading screen
