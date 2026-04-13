@@ -554,7 +554,7 @@ function saveModalSelection() {
 // ========================================
 function exportToJSON() {
     const exportData = {
-        evento: 'Boda Refugio & Juan Jesús',
+        evento: 'Bodas de Diamante — Refugio & Juan Jesús',
         fecha_exportacion: new Date().toISOString(),
         total_fotos: photos.length,
         estadisticas: getStats(),
@@ -579,7 +579,7 @@ function exportToJSON() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `seleccion-fotos-boda-lupita-alan-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `seleccion-fotos-bodas-diamante-refugio-juan-jesus-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
 
@@ -588,7 +588,7 @@ function exportToJSON() {
 
 function generateTextSummary() {
     const stats = getStats();
-    let summary = '💒 SELECCIÓN DE FOTOS - BODA BERENICE & OLIVER\n';
+    let summary = '💎 SELECCIÓN DE FOTOS - BODAS DE DIAMANTE REFUGIO & JUAN JESÚS\n';
     summary += '═══════════════════════════════════════════════════\n\n';
     summary += `📋 SEGÚN CONTRATO:\n`;
     summary += `   🖼️  Ampliación requerida: ${LIMITES.ampliacion} foto (50x60 cm)\n`;

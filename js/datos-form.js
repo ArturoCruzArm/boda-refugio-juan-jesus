@@ -17,13 +17,17 @@
 
     protagonistas: {
       icon: '👑', label: 'Protagonistas',
-      tiposEvento: ['xv','boda','bautizo','graduacion','cumpleanos','otro'],
+      tiposEvento: ['xv','boda','bautizo','graduacion','cumpleanos','aniversario','otro'],
       campos: [
         { key:'nombre',       label:'Nombre de la quinceañera',           type:'text',     ph:'Ej: Sheilyn Guadalupe Herrera Reynoso', tiposEvento:['xv'] },
         { key:'nombre',       label:'Nombre de la novia',                type:'text',     ph:'Ej: Patricia Lupita Martínez',        tiposEvento:['boda'] },
+        { key:'nombre',       label:'Nombre de la esposa (festejada)',   type:'text',     ph:'Ej: Ma. Refugio Hernández Morales',   tiposEvento:['aniversario'] },
         { key:'nombre',       label:'Nombre del festejado/a',            type:'text',     ph:'Nombre completo',                       tiposEvento:['bautizo','cumpleanos','graduacion','otro'] },
         { key:'fecha_nac',    label:'Fecha de nacimiento',               type:'date',     ph:'',                                      tiposEvento:['xv','bautizo','cumpleanos'] },
         { key:'nombre_2',     label:'Nombre del novio',                  type:'text',     ph:'Ej: Carlos Eduardo López',              tiposEvento:['boda'] },
+        { key:'nombre_2',     label:'Nombre del esposo (festejado)',     type:'text',     ph:'Ej: Juan Jesús Rodríguez Tavares',    tiposEvento:['aniversario'] },
+        { key:'aniversario_anos', label:'Años de matrimonio',            type:'number',   ph:'Ej: 60',                                tiposEvento:['aniversario'] },
+        { key:'fecha_boda_original', label:'Fecha de la boda original',  type:'date',     ph:'',                                      tiposEvento:['aniversario'] },
         { key:'nombre_madre', label:'Nombre completo de la mamá de la quinceañera', type:'text', ph:'Ej: María Concepción Reynoso Cuevas', tiposEvento:['xv','bautizo','cumpleanos','graduacion','otro'] },
         { key:'nombre_padre', label:'Nombre completo del papá de la quinceañera', type:'text', ph:'Ej: Roberto Herrera García',        tiposEvento:['xv','bautizo','cumpleanos','graduacion','otro'] },
         { key:'nombre_madre', label:'Nombre completo de la mamá de la novia',     type:'text', ph:'Ej: Patricia Becerra Pacheco',      tiposEvento:['boda'] },
@@ -49,6 +53,34 @@
       campos: [
         { key:'padrino', label:'Padrino',        type:'text', ph:'Nombre completo' },
         { key:'madrina', label:'Madrina',         type:'text', ph:'Nombre completo' },
+      ]
+    },
+
+    // ── HIJOS ORGANIZADORES (ANIVERSARIO) ────────────────────────────────
+    hijos_organizadores: {
+      icon: '👨‍👩‍👧‍👦', label: 'Hijos Organizadores',
+      tiposEvento: ['aniversario'],
+      tipo: 'array',
+      keyLista: 'nombres',
+      keyCantidad: 'cantidad',
+      phItem: 'Nombre del hijo/a',
+      opciones: [0,1,2,3,4,5,6,7,8,9,10,11,12],
+    },
+
+    // ── MADRINAS / PADRINOS ANIVERSARIO ──────────────────────────────────
+    madrinas_aniversario: {
+      icon: '🎀', label: 'Padrinos / Madrinas de la Celebración',
+      tiposEvento: ['aniversario'],
+      campos: [
+        { key:'misa',         label:'⛪ Misa de Acción de Gracias', type:'text', ph:'Nombre' },
+        { key:'pastel',       label:'🎂 Pastel',                    type:'text', ph:'Nombre' },
+        { key:'brindis',      label:'🥂 Brindis',                   type:'text', ph:'Nombre' },
+        { key:'recuerdos',    label:'🎁 Recuerdos',                 type:'text', ph:'Nombre' },
+        { key:'centros_mesa', label:'🌸 Centros de mesa',           type:'text', ph:'Nombre' },
+        { key:'decoracion',   label:'🎨 Decoración',                type:'text', ph:'Nombre' },
+        { key:'musica_dj',    label:'🎵 DJ/Música',                 type:'text', ph:'Nombre' },
+        { key:'foto_video',   label:'📸 Foto/Video',                type:'text', ph:'Nombre' },
+        { key:'flores',       label:'💐 Flores / Arreglos',         type:'text', ph:'Nombre' },
       ]
     },
 
@@ -123,7 +155,7 @@
     // ── MADRINAS / PADRINOS ADICIONALES (ambos tipos) ───────────────────
     madrinas_extra: {
       icon: '➕', label: 'Madrinas / Padrinos adicionales',
-      tiposEvento: ['xv','boda','bautizo'],
+      tiposEvento: ['xv','boda','bautizo','aniversario'],
       tipo: 'extras',   // rol libre + nombre libre
       ph_rol:    'Ej: Madrina de flores, Padrino de mesa',
       ph_nombre: 'Nombre completo',
@@ -161,7 +193,7 @@
 
     familiares: {
       icon: '👨‍👩‍👧‍👦', label: 'Familiares Especiales',
-      tiposEvento: ['xv','boda','bautizo','graduacion','cumpleanos'],
+      tiposEvento: ['xv','boda','bautizo','graduacion','cumpleanos','aniversario'],
       tipo: 'familiares',
       parentescos: ['Abuelita','Abuelito','Tía','Tío','Prima','Primo','Hermana','Hermano','Madrina especial','Padrino especial','Amiga especial','Otro'],
     },
@@ -194,6 +226,7 @@
         { key:'colores_reservados',label:'Colores reservados para la quinceañera',      type:'text',   ph:'Ej: Rosa, Lila',      tiposEvento:['xv'] },
         { key:'colores_reservados',label:'Colores reservados (blanco exclusivo novia)',  type:'text',   ph:'Ej: Blanco, Marfil',  tiposEvento:['boda'] },
         { key:'colores_reservados',label:'Colores reservados para el festejado/a',       type:'text',   ph:'Ej: Azul rey',        tiposEvento:['bautizo','cumpleanos','graduacion','otro'] },
+        { key:'colores_reservados',label:'Colores reservados para los festejados',    type:'text',   ph:'Ej: Plata, blanco',   tiposEvento:['aniversario'] },
         { key:'nota',              label:'Indicación adicional',                         type:'text',   ph:'Ej: No usar tacones de aguja' },
       ]
     },
@@ -217,6 +250,12 @@
         { key:'testimonio_ella',      label:'Testimonio de ella: ¿qué hace único a tu novio?', type:'textarea', ph:'Con sus propias palabras…',                                     tiposEvento:['boda'] },
         { key:'testimonio_el',        label:'Testimonio de él: ¿qué hace única a tu novia?',   type:'textarea', ph:'Con sus propias palabras…',                                     tiposEvento:['boda'] },
         { key:'momento_favorito',     label:'Momento favorito juntos antes de la boda',        type:'textarea', ph:'Un recuerdo, viaje, fecha especial…',                           tiposEvento:['boda'] },
+        // XV años
+        // Aniversario
+        { key:'como_se_conocieron',   label:'¿Cómo se conocieron los festejados?',                type:'textarea', ph:'Cuéntanos la historia desde el principio…',                      tiposEvento:['aniversario'] },
+        { key:'anecdota_60',          label:'Anécdota favorita de sus años juntos',               type:'textarea', ph:'Un recuerdo especial que la familia atesora…',                    tiposEvento:['aniversario'] },
+        { key:'testimonio_hijos',     label:'Testimonio de los hijos: ¿qué admiran de sus padres?', type:'textarea', ph:'Con sus propias palabras…',                                   tiposEvento:['aniversario'] },
+        { key:'fotos_antiguas',       label:'¿Tienen fotos antiguas para el slideshow?',          type:'select',   opciones:['Sí, las tenemos listas','Estamos recopilando','No tenemos'],  tiposEvento:['aniversario'] },
         // XV años
         { key:'como_planificaron',    label:'¿Cómo imaginaban esta fiesta? ¿De quién fue la idea?', type:'textarea', ph:'La quinceañera, mamá, papá… cuénten la historia detrás…', tiposEvento:['xv'] },
         { key:'testimonio_madre_xv',  label:'Testimonio de mamá: algo especial sobre tu hija',  type:'textarea', ph:'Un recuerdo, su personalidad, lo que más la enorgullece…',    tiposEvento:['xv'] },
@@ -875,12 +914,13 @@
    * API PÚBLICA
    * ═══════════════════════════════════════════════════════════════════ */
   window.DatosForm = {
-    async init(slug, containerId) {
+    async init(slug, containerId, tipoOverride) {
       injectCSS();
       const container = document.getElementById(containerId);
       container.innerHTML = '<p style="text-align:center;opacity:.5;padding:3rem">Cargando...</p>';
       try {
         const ev = await cargarDatos(slug);
+        if (tipoOverride) eventoTipo = tipoOverride;
         renderForm(container, ev.nombre);
       } catch (e) {
         container.innerHTML = `<p style="color:#f87171;text-align:center;padding:2rem">Error: ${e.message}</p>`;
