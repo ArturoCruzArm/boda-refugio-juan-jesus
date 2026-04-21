@@ -112,15 +112,24 @@
                 if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
             });
 
-            // Merge: Supabase base + local encima (migrar localStorage viejo)
+            // Si Supabase tiene datos, es la verdad absoluta.
+            // Solo usar localStorage como migracion si Supabase esta vacio.
             var local = {};
             try { local = JSON.parse(localStorage.getItem(SB_KEY) || '{}'); } catch(e) {}
-            var merged = Object.assign({}, sb);
-            Object.entries(local).forEach(function(e) {
-                if (Object.values(e[1]).some(function(v){ return v; })) merged[e[0]] = e[1];
-            });
 
-            // Aplicar al UI
+            var merged;
+            if (Object.keys(sb).length > 0) {
+                // Supabase tiene datos: es la fuente de verdad
+                merged = sb;
+            } else if (Object.keys(local).length > 0) {
+                // Supabase vacio + local tiene datos: migrar a Supabase
+                merged = local;
+                sbUpsertSelections().catch(function(){});
+            } else {
+                merged = {};
+            }
+
+            // Aplicar al UI y sobreescribir localStorage
             if (typeof photoSelections !== 'undefined') {
                 photoSelections = merged;
             }
@@ -129,11 +138,6 @@
             if (typeof renderGallery === 'function') renderGallery();
             if (typeof updateStats === 'function') updateStats();
             if (typeof updateFilterButtons === 'function') updateFilterButtons();
-
-            // Subir merge a Supabase si hay diferencia
-            if (Object.keys(merged).length > Object.keys(sb).length) {
-                sbUpsertSelections().catch(function(){});
-            }
 
             sbRegistrarVisita();
             mostrarBanner(merged);
