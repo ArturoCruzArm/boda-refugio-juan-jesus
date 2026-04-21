@@ -15,6 +15,7 @@
     let _syncing   = false;
     let _syncTimer = null;
     let _failCount = 0;
+    let _lastLocalSave = 0;
     const MAX_FAILS = 5;
 
     async function getEventoId() {
@@ -134,7 +135,11 @@
 
             var merged;
             if (isPoll) {
-                if (sbCount === 0 && localCount > 0) {
+                var recentLocal = (Date.now() - _lastLocalSave) < 60000;
+                if (recentLocal) {
+                    merged = local;
+                    sbSync(local).catch(function(){});
+                } else if (sbCount === 0 && localCount > 0) {
                     merged = local;
                     sbSync(local).catch(function(){});
                 } else if (sbCount >= localCount) {
@@ -197,6 +202,7 @@
     localStorage.setItem = function(key, value) {
         _origSet(key, value);
         if (key === SB_KEY && !_syncing) {
+            _lastLocalSave = Date.now();
             clearTimeout(_syncTimer);
             _syncTimer = setTimeout(function() {
                 try { sbSync(JSON.parse(value)); } catch(e) {}
