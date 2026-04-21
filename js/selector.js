@@ -239,6 +239,8 @@ function openModal(index) {
 }
 
 function closeModal() {
+    saveCurrentSelections();
+    renderGallery();
     const modal = document.getElementById('photoModal');
     modal.classList.remove('active');
     document.body.style.overflow = 'auto';
