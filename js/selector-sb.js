@@ -1,19 +1,20 @@
-// selector-sb.js — Supabase sync para Foro 7
+// selector-sb.js — Supabase sync + Realtime para Foro 7
 // Slug: boda-refugio-juan-jesus | Storage key: boda_refugio_juan_jesus_photo_selections
 (function () {
-    const SUPABASE_URL  = 'https://nzpujmlienzfetqcgsxz.supabase.co';
-    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56cHVqbWxpZW56ZmV0cWNnc3h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2ODYzMzYsImV4cCI6MjA5MDI2MjMzNn0.xl3lsb-KYj5tVLKTnzpbsdEGoV9ySnswH4eyRuyEH1s';
-    const EVENTO_SLUG   = 'boda-refugio-juan-jesus';
-    const SB_KEY        = 'boda_refugio_juan_jesus_photo_selections';
-    const SB_H = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json' };
+    var SUPABASE_URL  = 'https://nzpujmlienzfetqcgsxz.supabase.co';
+    var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56cHVqbWxpZW56ZmV0cWNnc3h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2ODYzMzYsImV4cCI6MjA5MDI2MjMzNn0.xl3lsb-KYj5tVLKTnzpbsdEGoV9ySnswH4eyRuyEH1s';
+    var EVENTO_SLUG   = 'boda-refugio-juan-jesus';
+    var SB_KEY        = 'boda_refugio_juan_jesus_photo_selections';
+    var SB_H = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json' };
 
-    const SESSION_KEY = 'foro7_sid';
-    let sid = localStorage.getItem(SESSION_KEY);
+    var SESSION_KEY = 'foro7_sid';
+    var sid = localStorage.getItem(SESSION_KEY);
     if (!sid) { sid = crypto.randomUUID(); localStorage.setItem(SESSION_KEY, sid); }
 
-    let eventoId   = null;
-    let _syncing   = false;
-    let _syncTimer = null;
+    var eventoId   = null;
+    var _syncing   = false;
+    var _syncTimer = null;
+    var _sb        = null; // supabase client
 
     async function getEventoId() {
         if (eventoId) return eventoId;
@@ -31,13 +32,9 @@
             el.style.cssText = 'position:fixed;bottom:10px;right:10px;padding:6px 14px;border-radius:20px;font-size:.8rem;z-index:9999;transition:opacity .5s;pointer-events:none;';
             document.body.appendChild(el);
         }
-        if (ok) {
-            el.style.background = '#059669'; el.style.color = '#fff';
-            el.textContent = '\u2601 Sincronizado';
-        } else {
-            el.style.background = '#dc2626'; el.style.color = '#fff';
-            el.textContent = '\u26a0 Error al sincronizar';
-        }
+        el.style.background = ok ? '#059669' : '#dc2626';
+        el.style.color = '#fff';
+        el.textContent = ok ? '\u2601 Sincronizado' : '\u26a0 Error al sincronizar';
         el.style.opacity = '1';
         if (ok) setTimeout(function(){ el.style.opacity = '0'; }, 3000);
     }
@@ -48,7 +45,6 @@
             var eid = await getEventoId();
             if (!eid) return;
 
-            // UPSERT fotos activas
             var activeIndices = [];
             var rows = [];
             Object.entries(sels).forEach(function(e) {
@@ -74,7 +70,7 @@
                 if (!r.ok) throw new Error('UPSERT ' + r.status);
             }
 
-            // DELETE fotos deseleccionadas
+            // DELETE deseleccionadas
             var dbResp = await fetch(
                 SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index',
                 { headers: SB_H }
@@ -98,7 +94,7 @@
         }
     }
 
-    // --- LOAD: solo al abrir la pagina ---
+    // --- LOAD: lee Supabase una vez al abrir ---
     async function sbLoad() {
         try {
             var eid = await getEventoId();
@@ -110,7 +106,6 @@
             if (!r.ok) return;
             var rows = await r.json();
 
-            // Supabase -> objeto
             var sb = {};
             rows.forEach(function(row) {
                 var sel = (row.datos && Object.keys(row.datos).length)
@@ -119,7 +114,7 @@
                 if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
             });
 
-            // Merge: Supabase base + local encima (local gana)
+            // Merge: Supabase base + local encima
             var local = {};
             try { local = JSON.parse(localStorage.getItem(SB_KEY) || '{}'); } catch(e) {}
             var merged = Object.assign({}, sb);
@@ -136,11 +131,65 @@
                 if (typeof updateFilterButtons === 'function') updateFilterButtons();
             } finally { _syncing = false; }
 
-            // Subir merge a Supabase
             if (Object.keys(merged).length) sbSync(merged).catch(function(){});
             sbRegistrarVisita();
             mostrarBanner(merged);
+
+            // Iniciar Realtime despues de la carga inicial
+            sbSubscribe(eid);
         } catch(e) { console.error('sbLoad error:', e); }
+    }
+
+    // --- REALTIME: recibir cambios de otros navegadores ---
+    function sbSubscribe(eid) {
+        if (!window.supabase || !window.supabase.createClient) {
+            console.warn('supabase-js no disponible, sin Realtime');
+            return;
+        }
+        try {
+            _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+            _sb.channel('selecciones-' + EVENTO_SLUG)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'selecciones',
+                    filter: 'evento_id=eq.' + eid
+                }, function(payload) {
+                    // Ignorar cambios propios
+                    if (payload.new && payload.new.session_id === sid) return;
+                    if (payload.old && payload.old.session_id === sid) return;
+                    // Recargar desde Supabase
+                    sbReloadFromDB(eid);
+                })
+                .subscribe();
+        } catch(e) { console.warn('Realtime error:', e); }
+    }
+
+    async function sbReloadFromDB(eid) {
+        try {
+            var r = await fetch(
+                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index,datos,impresion,invitacion,descartada,ampliacion',
+                { headers: SB_H }
+            );
+            if (!r.ok) return;
+            var rows = await r.json();
+            var sb = {};
+            rows.forEach(function(row) {
+                var sel = (row.datos && Object.keys(row.datos).length)
+                    ? row.datos
+                    : { impresion: row.impresion, invitacion: row.invitacion, descartada: row.descartada, ampliacion: row.ampliacion };
+                if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
+            });
+
+            _syncing = true;
+            try {
+                localStorage.setItem(SB_KEY, JSON.stringify(sb));
+                if (typeof loadSelections === 'function') loadSelections();
+                if (typeof renderGallery === 'function') renderGallery();
+                if (typeof updateStats === 'function') updateStats();
+                if (typeof updateFilterButtons === 'function') updateFilterButtons();
+            } finally { _syncing = false; }
+        } catch(e) { console.error('sbReloadFromDB error:', e); }
     }
 
     async function sbRegistrarVisita(pagina) {
