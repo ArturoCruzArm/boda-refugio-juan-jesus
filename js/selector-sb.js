@@ -11,11 +11,9 @@
     var sid = localStorage.getItem(SESSION_KEY);
     if (!sid) { sid = crypto.randomUUID(); localStorage.setItem(SESSION_KEY, sid); }
 
-    var eventoId     = null;
-    var _syncing     = false;
-    var _syncTimer   = null;
-    var _lastSync    = 0;
-    var SYNC_COOLDOWN = 3000; // ignorar Realtime 3s despues de sync propio
+    var eventoId    = null;
+    var sbDisponible = true;
+    var _lastSync   = 0;
 
     async function getEventoId() {
         if (eventoId) return eventoId;
@@ -25,35 +23,18 @@
         return eventoId;
     }
 
-    function showSyncStatus(ok) {
-        var el = document.getElementById('sb-sync-status');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'sb-sync-status';
-            el.style.cssText = 'position:fixed;bottom:10px;right:10px;padding:6px 14px;border-radius:20px;font-size:.8rem;z-index:9999;transition:opacity .5s;pointer-events:none;';
-            document.body.appendChild(el);
-        }
-        el.style.background = ok ? '#059669' : '#dc2626';
-        el.style.color = '#fff';
-        el.textContent = ok ? '\u2601 Sincronizado' : '\u26a0 Error al sincronizar';
-        el.style.opacity = '1';
-        if (ok) setTimeout(function(){ el.style.opacity = '0'; }, 3000);
-    }
-
-    // --- SYNC: sube estado local a Supabase ---
-    async function sbSync(sels) {
-        _lastSync = Date.now();
+    // --- UPSERT: sube selecciones activas (1 query) ---
+    async function sbUpsertSelections() {
+        if (!sbDisponible) return;
+        var sels = typeof photoSelections !== 'undefined' ? photoSelections : {};
+        var snapshot = Object.assign({}, sels);
         try {
             var eid = await getEventoId();
             if (!eid) return;
-
-            var activeIndices = [];
             var rows = [];
-            Object.entries(sels).forEach(function(e) {
+            Object.entries(snapshot).forEach(function(e) {
                 var idx = parseInt(e[0]), sel = e[1];
-                var hasAny = sel.impresion || sel.invitacion || sel.descartada || sel.ampliacion;
-                if (hasAny) {
-                    activeIndices.push(idx);
+                if (sel.impresion || sel.invitacion || sel.descartada || sel.ampliacion) {
                     rows.push({
                         evento_id: eid, session_id: sid, foto_index: idx,
                         impresion: sel.impresion || false, invitacion: sel.invitacion || false,
@@ -62,51 +43,65 @@
                     });
                 }
             });
-
-            if (rows.length) {
-                var r = await fetch(SUPABASE_URL + '/rest/v1/selecciones?on_conflict=evento_id,foto_index', {
-                    method: 'POST',
-                    headers: Object.assign({}, SB_H, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-                    body: JSON.stringify(rows)
-                });
-                if (!r.ok) throw new Error('UPSERT ' + r.status);
-            }
-
-            // DELETE deseleccionadas
-            var dbResp = await fetch(
-                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index',
-                { headers: SB_H }
-            );
-            if (dbResp.ok) {
-                var dbRows = await dbResp.json();
-                var toDelete = dbRows.map(function(r){ return r.foto_index; })
-                    .filter(function(i){ return activeIndices.indexOf(i) === -1; });
-                if (toDelete.length) {
-                    await fetch(
-                        SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&foto_index=in.(' + toDelete.join(',') + ')',
-                        { method: 'DELETE', headers: SB_H }
-                    );
-                }
-            }
-
+            if (rows.length === 0) return;
             _lastSync = Date.now();
-            showSyncStatus(true);
+            var r = await fetch(SUPABASE_URL + '/rest/v1/selecciones?on_conflict=evento_id,foto_index', {
+                method: 'POST',
+                headers: Object.assign({}, SB_H, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+                body: JSON.stringify(rows)
+            });
+            if (!r.ok) throw new Error('UPSERT ' + r.status);
+            _lastSync = Date.now();
         } catch(e) {
-            console.error('sbSync error:', e);
-            showSyncStatus(false);
+            console.warn('[Supabase] Sync error:', e.message);
         }
     }
 
-    // --- LOAD: lee Supabase una vez al abrir ---
-    async function sbLoad() {
+    // --- DELETE individual: borra 1 foto de Supabase (1 query) ---
+    async function sbDeleteSelection(foto_index) {
+        if (!sbDisponible) return;
         try {
             var eid = await getEventoId();
             if (!eid) return;
+            _lastSync = Date.now();
+            await fetch(
+                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&foto_index=eq.' + foto_index,
+                { method: 'DELETE', headers: SB_H }
+            );
+            _lastSync = Date.now();
+        } catch(e) {
+            console.warn('[Supabase] Delete error:', e.message);
+        }
+    }
+
+    // --- DELETE ALL: borra todas de Supabase ---
+    async function sbDeleteAll() {
+        if (!sbDisponible) return;
+        try {
+            var eid = await getEventoId();
+            if (!eid) return;
+            _lastSync = Date.now();
+            await fetch(
+                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid,
+                { method: 'DELETE', headers: SB_H }
+            );
+            _lastSync = Date.now();
+        } catch(e) {
+            console.warn('[Supabase] DeleteAll error:', e.message);
+        }
+    }
+
+    // --- LOAD: lee Supabase al abrir la pagina ---
+    async function sbLoad() {
+        try {
+            var eid = await getEventoId();
+            if (!eid) { sbDisponible = false; return; }
+
             var r = await fetch(
                 SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index,datos,impresion,invitacion,descartada,ampliacion',
                 { headers: SB_H }
             );
-            if (!r.ok) return;
+            if (!r.ok) throw new Error(r.status);
             var rows = await r.json();
 
             var sb = {};
@@ -117,6 +112,7 @@
                 if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
             });
 
+            // Merge: Supabase base + local encima (migrar localStorage viejo)
             var local = {};
             try { local = JSON.parse(localStorage.getItem(SB_KEY) || '{}'); } catch(e) {}
             var merged = Object.assign({}, sb);
@@ -124,32 +120,33 @@
                 if (Object.values(e[1]).some(function(v){ return v; })) merged[e[0]] = e[1];
             });
 
-            applyToUI(merged);
-
-            if (Object.keys(merged).length) sbSync(merged).catch(function(){});
-            sbRegistrarVisita();
-            mostrarBanner(merged);
-            sbSubscribe(eid);
-        } catch(e) { console.error('sbLoad error:', e); }
-    }
-
-    function applyToUI(data) {
-        _syncing = true;
-        try {
-            localStorage.setItem(SB_KEY, JSON.stringify(data));
+            // Aplicar al UI
+            if (typeof photoSelections !== 'undefined') {
+                photoSelections = merged;
+            }
+            try { localStorage.setItem(SB_KEY, JSON.stringify(merged)); } catch(e) {}
             if (typeof loadSelections === 'function') loadSelections();
             if (typeof renderGallery === 'function') renderGallery();
             if (typeof updateStats === 'function') updateStats();
             if (typeof updateFilterButtons === 'function') updateFilterButtons();
-        } finally { _syncing = false; }
+
+            // Subir merge a Supabase si hay diferencia
+            if (Object.keys(merged).length > Object.keys(sb).length) {
+                sbUpsertSelections().catch(function(){});
+            }
+
+            sbRegistrarVisita();
+            mostrarBanner(merged);
+            sbSubscribe(eid);
+        } catch(e) {
+            console.warn('[Supabase] Usando localStorage:', e.message);
+            sbDisponible = false;
+        }
     }
 
     // --- REALTIME: recibir cambios de otros navegadores ---
     function sbSubscribe(eid) {
-        if (!window.supabase || !window.supabase.createClient) {
-            console.warn('[sb] supabase-js no disponible, Realtime desactivado');
-            return;
-        }
+        if (!window.supabase || !window.supabase.createClient) return;
         try {
             var client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
                 auth: { persistSession: false }
@@ -161,12 +158,11 @@
                     table: 'selecciones',
                     filter: 'evento_id=eq.' + eid
                 }, function(payload) {
-                    // Ignorar eco de nuestros propios cambios
-                    if (Date.now() - _lastSync < SYNC_COOLDOWN) return;
+                    // Ignorar eco de cambios propios (3s ventana)
+                    if (Date.now() - _lastSync < 3000) return;
                     sbReloadFromDB(eid);
                 })
                 .subscribe();
-            console.log('[sb] Realtime conectado');
         } catch(e) { console.warn('[sb] Realtime error:', e); }
     }
 
@@ -185,8 +181,14 @@
                     : { impresion: row.impresion, invitacion: row.invitacion, descartada: row.descartada, ampliacion: row.ampliacion };
                 if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
             });
-            applyToUI(sb);
-        } catch(e) { console.error('sbReloadFromDB error:', e); }
+            if (typeof photoSelections !== 'undefined') {
+                photoSelections = sb;
+            }
+            try { localStorage.setItem(SB_KEY, JSON.stringify(sb)); } catch(e) {}
+            if (typeof renderGallery === 'function') renderGallery();
+            if (typeof updateStats === 'function') updateStats();
+            if (typeof updateFilterButtons === 'function') updateFilterButtons();
+        } catch(e) {}
     }
 
     async function sbRegistrarVisita(pagina) {
@@ -200,14 +202,10 @@
             });
         } catch(e) {}
     }
-    window.sbRegistrarVisita = sbRegistrarVisita;
 
     function mostrarBanner(sels) {
         if (document.getElementById('banner-sin-sel')) return;
         if (Object.keys(sels).length > 0) return;
-        var cfg = window.CONFIG || window.LIMITS || {};
-        var fecha = cfg.fechaEvento || cfg.fecha;
-        if (fecha && new Date(fecha) > new Date()) return;
         var banner = document.createElement('div');
         banner.id = 'banner-sin-sel';
         banner.style.cssText = 'background:#78350f;color:#fcd34d;text-align:center;padding:12px 20px;font-size:.88rem;position:sticky;top:0;z-index:200;line-height:1.5;';
@@ -215,17 +213,12 @@
         document.body.insertBefore(banner, document.body.firstChild);
     }
 
-    // Interceptar localStorage.setItem para sincronizar al guardar
-    var _origSet = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = function(key, value) {
-        _origSet(key, value);
-        if (key === SB_KEY && !_syncing) {
-            clearTimeout(_syncTimer);
-            _syncTimer = setTimeout(function() {
-                try { sbSync(JSON.parse(value)); } catch(e) {}
-            }, 800);
-        }
-    };
+    // Exponer funciones para que selector.js las llame directamente
+    window.sbUpsertSelections = sbUpsertSelections;
+    window.sbDeleteSelection  = sbDeleteSelection;
+    window.sbDeleteAll         = sbDeleteAll;
+    window.sbRegistrarVisita   = sbRegistrarVisita;
+    window.sbDisponible        = function() { return sbDisponible; };
 
     document.addEventListener('DOMContentLoaded', function() {
         sbLoad();

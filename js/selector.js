@@ -31,15 +31,20 @@ function saveSelections() {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(photoSelections));
     } catch (error) {
-        console.error('Error guardando selecciones:', error);
         showToast('Error al guardar. Verifica el espacio del navegador.', 'error');
+    }
+    if (typeof sbUpsertSelections === 'function') {
+        sbUpsertSelections().catch(function(e) { console.warn('[Supabase] Sync:', e.message); });
     }
 }
 
 function clearAllSelections() {
     if (confirm('¿Estás seguro de que quieres borrar TODAS las selecciones? Esta acción no se puede deshacer.')) {
         photoSelections = {};
-        saveSelections();
+        try { localStorage.setItem(STORAGE_KEY, '{}'); } catch(e) {}
+        if (typeof sbDeleteAll === 'function') {
+            sbDeleteAll().catch(function(e) { console.warn('[Supabase] DeleteAll:', e.message); });
+        }
         renderGallery();
         updateStats();
         updateFilterButtons();
@@ -286,7 +291,11 @@ function saveCurrentSelections() {
     if (hasAnySelection) {
         photoSelections[currentPhotoIndex] = selectedCategories;
     } else {
-        delete photoSelections[currentPhotoIndex];
+        const idx = currentPhotoIndex;
+        delete photoSelections[idx];
+        if (typeof sbDeleteSelection === 'function') {
+            sbDeleteSelection(idx).catch(function(e) { console.warn('[Supabase] Delete:', e.message); });
+        }
     }
 
     saveSelections();
@@ -320,7 +329,11 @@ function saveModalSelection() {
     if (hasAnySelection) {
         photoSelections[currentPhotoIndex] = selectedCategories;
     } else {
-        delete photoSelections[currentPhotoIndex];
+        const idx = currentPhotoIndex;
+        delete photoSelections[idx];
+        if (typeof sbDeleteSelection === 'function') {
+            sbDeleteSelection(idx).catch(function(e) { console.warn('[Supabase] Delete:', e.message); });
+        }
     }
 
     saveSelections();
