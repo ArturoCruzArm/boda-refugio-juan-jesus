@@ -39,7 +39,7 @@
                         evento_id: eid, session_id: sid, foto_index: idx,
                         impresion: sel.impresion || false, invitacion: sel.invitacion || false,
                         descartada: sel.descartada || false, ampliacion: sel.ampliacion || false,
-                        datos: sel
+                        datos: sel, code_version: 2
                     });
                 }
             });
