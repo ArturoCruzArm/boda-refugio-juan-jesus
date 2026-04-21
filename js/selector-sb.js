@@ -11,10 +11,11 @@
     var sid = localStorage.getItem(SESSION_KEY);
     if (!sid) { sid = crypto.randomUUID(); localStorage.setItem(SESSION_KEY, sid); }
 
-    var eventoId   = null;
-    var _syncing   = false;
-    var _syncTimer = null;
-    var _sb        = null; // supabase client
+    var eventoId     = null;
+    var _syncing     = false;
+    var _syncTimer   = null;
+    var _lastSync    = 0;
+    var SYNC_COOLDOWN = 3000; // ignorar Realtime 3s despues de sync propio
 
     async function getEventoId() {
         if (eventoId) return eventoId;
@@ -41,6 +42,7 @@
 
     // --- SYNC: sube estado local a Supabase ---
     async function sbSync(sels) {
+        _lastSync = Date.now();
         try {
             var eid = await getEventoId();
             if (!eid) return;
@@ -87,6 +89,7 @@
                 }
             }
 
+            _lastSync = Date.now();
             showSyncStatus(true);
         } catch(e) {
             console.error('sbSync error:', e);
@@ -114,7 +117,6 @@
                 if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
             });
 
-            // Merge: Supabase base + local encima
             var local = {};
             try { local = JSON.parse(localStorage.getItem(SB_KEY) || '{}'); } catch(e) {}
             var merged = Object.assign({}, sb);
@@ -122,47 +124,50 @@
                 if (Object.values(e[1]).some(function(v){ return v; })) merged[e[0]] = e[1];
             });
 
-            _syncing = true;
-            try {
-                localStorage.setItem(SB_KEY, JSON.stringify(merged));
-                if (typeof loadSelections === 'function') loadSelections();
-                if (typeof renderGallery === 'function') renderGallery();
-                if (typeof updateStats === 'function') updateStats();
-                if (typeof updateFilterButtons === 'function') updateFilterButtons();
-            } finally { _syncing = false; }
+            applyToUI(merged);
 
             if (Object.keys(merged).length) sbSync(merged).catch(function(){});
             sbRegistrarVisita();
             mostrarBanner(merged);
-
-            // Iniciar Realtime despues de la carga inicial
             sbSubscribe(eid);
         } catch(e) { console.error('sbLoad error:', e); }
+    }
+
+    function applyToUI(data) {
+        _syncing = true;
+        try {
+            localStorage.setItem(SB_KEY, JSON.stringify(data));
+            if (typeof loadSelections === 'function') loadSelections();
+            if (typeof renderGallery === 'function') renderGallery();
+            if (typeof updateStats === 'function') updateStats();
+            if (typeof updateFilterButtons === 'function') updateFilterButtons();
+        } finally { _syncing = false; }
     }
 
     // --- REALTIME: recibir cambios de otros navegadores ---
     function sbSubscribe(eid) {
         if (!window.supabase || !window.supabase.createClient) {
-            console.warn('supabase-js no disponible, sin Realtime');
+            console.warn('[sb] supabase-js no disponible, Realtime desactivado');
             return;
         }
         try {
-            _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-            _sb.channel('selecciones-' + EVENTO_SLUG)
+            var client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+                auth: { persistSession: false }
+            });
+            client.channel('sel-' + EVENTO_SLUG)
                 .on('postgres_changes', {
                     event: '*',
                     schema: 'public',
                     table: 'selecciones',
                     filter: 'evento_id=eq.' + eid
                 }, function(payload) {
-                    // Ignorar cambios propios
-                    if (payload.new && payload.new.session_id === sid) return;
-                    if (payload.old && payload.old.session_id === sid) return;
-                    // Recargar desde Supabase
+                    // Ignorar eco de nuestros propios cambios
+                    if (Date.now() - _lastSync < SYNC_COOLDOWN) return;
                     sbReloadFromDB(eid);
                 })
                 .subscribe();
-        } catch(e) { console.warn('Realtime error:', e); }
+            console.log('[sb] Realtime conectado');
+        } catch(e) { console.warn('[sb] Realtime error:', e); }
     }
 
     async function sbReloadFromDB(eid) {
@@ -180,15 +185,7 @@
                     : { impresion: row.impresion, invitacion: row.invitacion, descartada: row.descartada, ampliacion: row.ampliacion };
                 if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
             });
-
-            _syncing = true;
-            try {
-                localStorage.setItem(SB_KEY, JSON.stringify(sb));
-                if (typeof loadSelections === 'function') loadSelections();
-                if (typeof renderGallery === 'function') renderGallery();
-                if (typeof updateStats === 'function') updateStats();
-                if (typeof updateFilterButtons === 'function') updateFilterButtons();
-            } finally { _syncing = false; }
+            applyToUI(sb);
         } catch(e) { console.error('sbReloadFromDB error:', e); }
     }
 
