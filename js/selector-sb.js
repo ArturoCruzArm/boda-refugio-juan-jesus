@@ -14,14 +14,11 @@
     let eventoId   = null;
     let _syncing   = false;
     let _syncTimer = null;
-    let _failCount = 0;
-    let _lastLocalSave = 0;
-    const MAX_FAILS = 5;
 
     async function getEventoId() {
         if (eventoId) return eventoId;
-        const r = await fetch(SUPABASE_URL + '/rest/v1/eventos?slug=eq.' + EVENTO_SLUG + '&select=id&limit=1', { headers: SB_H });
-        const rows = await r.json();
+        var r = await fetch(SUPABASE_URL + '/rest/v1/eventos?slug=eq.' + EVENTO_SLUG + '&select=id&limit=1', { headers: SB_H });
+        var rows = await r.json();
         eventoId = rows[0] ? rows[0].id : null;
         return eventoId;
     }
@@ -39,33 +36,30 @@
             el.textContent = '\u2601 Sincronizado';
         } else {
             el.style.background = '#dc2626'; el.style.color = '#fff';
-            el.textContent = '\u26a0 Error al sincronizar (reintentando...)';
+            el.textContent = '\u26a0 Error al sincronizar';
         }
         el.style.opacity = '1';
         if (ok) setTimeout(function(){ el.style.opacity = '0'; }, 3000);
     }
 
+    // --- SYNC: sube estado local a Supabase ---
     async function sbSync(sels) {
-        if (_failCount >= MAX_FAILS) return;
         try {
             var eid = await getEventoId();
             if (!eid) return;
-            var entries = Object.entries(sels);
 
+            // UPSERT fotos activas
             var activeIndices = [];
             var rows = [];
-            entries.forEach(function(e) {
+            Object.entries(sels).forEach(function(e) {
                 var idx = parseInt(e[0]), sel = e[1];
                 var hasAny = sel.impresion || sel.invitacion || sel.descartada || sel.ampliacion;
                 if (hasAny) {
                     activeIndices.push(idx);
                     rows.push({
-                        evento_id: eid, session_id: sid,
-                        foto_index: idx,
-                        impresion:  sel.impresion  || false,
-                        invitacion: sel.invitacion || false,
-                        descartada: sel.descartada || false,
-                        ampliacion: sel.ampliacion || false,
+                        evento_id: eid, session_id: sid, foto_index: idx,
+                        impresion: sel.impresion || false, invitacion: sel.invitacion || false,
+                        descartada: sel.descartada || false, ampliacion: sel.ampliacion || false,
                         datos: sel
                     });
                 }
@@ -77,17 +71,18 @@
                     headers: Object.assign({}, SB_H, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
                     body: JSON.stringify(rows)
                 });
-                if (!r.ok) throw new Error('UPSERT failed: ' + r.status);
+                if (!r.ok) throw new Error('UPSERT ' + r.status);
             }
 
+            // DELETE fotos deseleccionadas
             var dbResp = await fetch(
                 SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index',
                 { headers: SB_H }
             );
             if (dbResp.ok) {
                 var dbRows = await dbResp.json();
-                var dbIndices = dbRows.map(function(r){ return r.foto_index; });
-                var toDelete = dbIndices.filter(function(i){ return activeIndices.indexOf(i) === -1; });
+                var toDelete = dbRows.map(function(r){ return r.foto_index; })
+                    .filter(function(i){ return activeIndices.indexOf(i) === -1; });
                 if (toDelete.length) {
                     await fetch(
                         SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&foto_index=in.(' + toDelete.join(',') + ')',
@@ -96,21 +91,15 @@
                 }
             }
 
-            _failCount = 0;
             showSyncStatus(true);
         } catch(e) {
-            _failCount++;
-            console.error('sbSync error (' + _failCount + '/' + MAX_FAILS + '):', e);
+            console.error('sbSync error:', e);
             showSyncStatus(false);
-            if (_failCount < MAX_FAILS) {
-                setTimeout(function() {
-                    try { sbSync(JSON.parse(localStorage.getItem(SB_KEY) || '{}')); } catch(e2) {}
-                }, _failCount * 3000);
-            }
         }
     }
 
-    async function sbLoad(isPoll) {
+    // --- LOAD: solo al abrir la pagina ---
+    async function sbLoad() {
         try {
             var eid = await getEventoId();
             if (!eid) return;
@@ -120,6 +109,8 @@
             );
             if (!r.ok) return;
             var rows = await r.json();
+
+            // Supabase -> objeto
             var sb = {};
             rows.forEach(function(row) {
                 var sel = (row.datos && Object.keys(row.datos).length)
@@ -128,32 +119,13 @@
                 if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
             });
 
+            // Merge: Supabase base + local encima (local gana)
             var local = {};
             try { local = JSON.parse(localStorage.getItem(SB_KEY) || '{}'); } catch(e) {}
-            var localCount = Object.keys(local).length;
-            var sbCount = Object.keys(sb).length;
-
-            var merged;
-            if (isPoll) {
-                var recentLocal = (Date.now() - _lastLocalSave) < 60000;
-                if (recentLocal) {
-                    merged = local;
-                    sbSync(local).catch(function(){});
-                } else if (sbCount === 0 && localCount > 0) {
-                    merged = local;
-                    sbSync(local).catch(function(){});
-                } else if (sbCount >= localCount) {
-                    merged = sb;
-                } else {
-                    merged = Object.assign({}, sb, local);
-                    sbSync(merged).catch(function(){});
-                }
-            } else {
-                merged = Object.assign({}, sb);
-                Object.entries(local).forEach(function(e) {
-                    if (Object.values(e[1]).some(function(v){ return v; })) merged[e[0]] = e[1];
-                });
-            }
+            var merged = Object.assign({}, sb);
+            Object.entries(local).forEach(function(e) {
+                if (Object.values(e[1]).some(function(v){ return v; })) merged[e[0]] = e[1];
+            });
 
             _syncing = true;
             try {
@@ -164,11 +136,10 @@
                 if (typeof updateFilterButtons === 'function') updateFilterButtons();
             } finally { _syncing = false; }
 
-            if (!isPoll) {
-                if (Object.keys(merged).length) sbSync(merged).catch(function(){});
-                sbRegistrarVisita();
-                mostrarBanner(merged);
-            }
+            // Subir merge a Supabase
+            if (Object.keys(merged).length) sbSync(merged).catch(function(){});
+            sbRegistrarVisita();
+            mostrarBanner(merged);
         } catch(e) { console.error('sbLoad error:', e); }
     }
 
@@ -198,50 +169,19 @@
         document.body.insertBefore(banner, document.body.firstChild);
     }
 
+    // Interceptar localStorage.setItem para sincronizar al guardar
     var _origSet = localStorage.setItem.bind(localStorage);
     localStorage.setItem = function(key, value) {
         _origSet(key, value);
         if (key === SB_KEY && !_syncing) {
-            _lastLocalSave = Date.now();
             clearTimeout(_syncTimer);
             _syncTimer = setTimeout(function() {
                 try { sbSync(JSON.parse(value)); } catch(e) {}
-            }, 600);
+            }, 800);
         }
     };
 
-    function addSwipe() {
-        var modal = document.getElementById('photoModal') ||
-                    document.querySelector('.photo-modal,.modal-overlay,[id*="modal"],[class*="modal"]');
-        if (!modal || modal._sbSwipe) return;
-        modal._sbSwipe = true;
-        var tx = 0;
-        modal.addEventListener('touchstart', function(e) { tx = e.touches[0].clientX; }, { passive: true });
-        modal.addEventListener('touchend', function(e) {
-            var dx = e.changedTouches[0].clientX - tx;
-            if (Math.abs(dx) < 50) return;
-            var next = document.getElementById('nextPhoto') ||
-                       document.querySelector('[id*="next"],[onclick*="next"],[onclick*="siguiente"],[class*="next"]');
-            if (dx > 0) {
-                var save = document.getElementById('btnGuardar') ||
-                           document.querySelector('[id*="guardar"],[id*="save"],[onclick*="guardar"],[onclick*="save"],[class*="guardar"]');
-                if (save) save.click();
-            } else {
-                var clear = document.getElementById('btnLimpiar') ||
-                            document.querySelector('[id*="limpiar"],[id*="clear"],[onclick*="limpiar"],[onclick*="clear"],[class*="limpiar"]');
-                if (clear) clear.click();
-            }
-            if (next) setTimeout(function(){ next.click(); }, 60);
-        }, { passive: true });
-    }
-
     document.addEventListener('DOMContentLoaded', function() {
-        sbLoad(false);
-        setInterval(function() {
-            var open = window.modalOpen ||
-                document.querySelector('.modal[style*="block"],.modal.active,.modal.show,#photoModal[style*="flex"],#photoModal[style*="block"]');
-            if (!open) sbLoad(true);
-        }, 30000);
-        document.addEventListener('click', function() { setTimeout(addSwipe, 200); }, { passive: true });
+        sbLoad();
     });
 })();
