@@ -653,6 +653,18 @@ body {
     background: #777;
 }
 
+.btn-delete-selection {
+    background: #f44336;
+    color: white;
+    padding: 15px 24px;
+}
+
+.btn-delete-selection:hover {
+    background: #c62828;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+}
+
 /* ========================================
    TOAST NOTIFICATION
    ======================================== */

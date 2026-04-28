@@ -1,4 +1,4 @@
-// selector-sb.js — Supabase sync + Realtime para Foro 7
+// selector-sb.js - Supabase sync + Realtime para Foro 7
 // Slug: boda-refugio-juan-jesus | Storage key: boda_refugio_juan_jesus_photo_selections
 (function () {
     var SUPABASE_URL  = 'https://nzpujmlienzfetqcgsxz.supabase.co';
@@ -6,14 +6,84 @@
     var EVENTO_SLUG   = 'boda-refugio-juan-jesus';
     var SB_KEY        = 'boda_refugio_juan_jesus_photo_selections';
     var SB_H = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json' };
+    var CURRENT_CODE_VERSION = 3;
 
     var SESSION_KEY = 'foro7_sid';
     var sid = localStorage.getItem(SESSION_KEY);
     if (!sid) { sid = crypto.randomUUID(); localStorage.setItem(SESSION_KEY, sid); }
 
-    var eventoId    = null;
+    var eventoId = null;
     var sbDisponible = true;
-    var _lastSync   = 0;
+    var _lastSync = 0;
+    var _reloading = false;
+    var CLOCK_KEY = SB_KEY + '_clocks_v1';
+    var clockState = loadClockState();
+
+    function loadClockState() {
+        try { return JSON.parse(localStorage.getItem(CLOCK_KEY) || '{}'); } catch(e) { return {}; }
+    }
+
+    function saveClockState() {
+        try { localStorage.setItem(CLOCK_KEY, JSON.stringify(clockState)); } catch(e) {}
+    }
+
+    function baseSelection(sel) {
+        return {
+            ampliacion: !!(sel && sel.ampliacion),
+            impresion: !!(sel && sel.impresion),
+            invitacion: !!(sel && sel.invitacion),
+            descartada: !!(sel && sel.descartada)
+        };
+    }
+
+    function hasAny(sel) {
+        sel = baseSelection(sel);
+        return sel.ampliacion || sel.impresion || sel.invitacion || sel.descartada;
+    }
+
+    function readMeta(rowOrSelection) {
+        var datos = rowOrSelection && rowOrSelection.datos ? rowOrSelection.datos : rowOrSelection;
+        var meta = datos && datos._sync ? datos._sync : {};
+        return {
+            clock: Number(meta.clock || 0),
+            updatedAt: meta.updatedAt || '',
+            sid: meta.sid || '',
+            deleted: !!meta.deleted
+        };
+    }
+
+    function rememberClock(fotoIndex, clock) {
+        if (!clock) return;
+        var key = String(fotoIndex);
+        clockState[key] = Math.max(Number(clockState[key] || 0), Number(clock || 0));
+    }
+
+    function nextClock(fotoIndex, remoteClock) {
+        clockState = loadClockState();
+        var key = String(fotoIndex);
+        var next = Math.max(Number(clockState[key] || 0), Number(remoteClock || 0)) + 1;
+        clockState[key] = next;
+        saveClockState();
+        return next;
+    }
+
+    function selectionWithMeta(sel, clock, deleted) {
+        var clean = baseSelection(sel);
+        clean._sync = {
+            clock: clock,
+            sid: sid,
+            updatedAt: new Date().toISOString(),
+            deleted: !!deleted
+        };
+        return clean;
+    }
+
+    function rowToSelection(row) {
+        var sel = (row.datos && Object.keys(row.datos).length)
+            ? row.datos
+            : { impresion: row.impresion, invitacion: row.invitacion, descartada: row.descartada, ampliacion: row.ampliacion };
+        return baseSelection(sel);
+    }
 
     async function getEventoId() {
         if (eventoId) return eventoId;
@@ -23,124 +93,160 @@
         return eventoId;
     }
 
-    // --- UPSERT: sube selecciones activas (1 query) ---
-    async function sbUpsertSelections() {
-        if (!sbDisponible) return;
-        var sels = typeof photoSelections !== 'undefined' ? photoSelections : {};
-        var snapshot = Object.assign({}, sels);
+    async function getRemoteSelection(eid, fotoIndex) {
+        var r = await fetch(
+            SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&foto_index=eq.' + fotoIndex + '&select=foto_index,datos,impresion,invitacion,descartada,ampliacion&limit=1',
+            { headers: SB_H }
+        );
+        if (!r.ok) return null;
+        var rows = await r.json();
+        return rows[0] || null;
+    }
+
+    async function writeRow(row) {
+        _lastSync = Date.now();
+        var r = await fetch(SUPABASE_URL + '/rest/v1/selecciones?on_conflict=evento_id,foto_index', {
+            method: 'POST',
+            headers: Object.assign({}, SB_H, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+            body: JSON.stringify([row])
+        });
+        if (!r.ok) throw new Error('UPSERT ' + r.status);
+        _lastSync = Date.now();
+    }
+
+    async function sbSaveSelection(fotoIndex, sel) {
+        if (!sbDisponible || !hasAny(sel)) return;
         try {
             var eid = await getEventoId();
             if (!eid) return;
-            var rows = [];
-            Object.entries(snapshot).forEach(function(e) {
-                var idx = parseInt(e[0]), sel = e[1];
-                if (sel.impresion || sel.invitacion || sel.descartada || sel.ampliacion) {
-                    rows.push({
-                        evento_id: eid, session_id: sid, foto_index: idx,
-                        impresion: sel.impresion || false, invitacion: sel.invitacion || false,
-                        descartada: sel.descartada || false, ampliacion: sel.ampliacion || false,
-                        datos: sel, code_version: 2
-                    });
-                }
+            var remote = await getRemoteSelection(eid, fotoIndex);
+            var remoteMeta = readMeta(remote);
+            clockState = loadClockState();
+            var localClock = Number(clockState[String(fotoIndex)] || 0);
+
+            if (remoteMeta.clock > localClock && remoteMeta.sid !== sid) {
+                await sbReloadFromDB(eid);
+                return;
+            }
+
+            var clock = nextClock(fotoIndex, remoteMeta.clock);
+            var datos = selectionWithMeta(sel, clock, false);
+            await writeRow({
+                evento_id: eid, session_id: sid, foto_index: fotoIndex,
+                impresion: datos.impresion, invitacion: datos.invitacion,
+                descartada: datos.descartada, ampliacion: datos.ampliacion,
+                datos: datos, code_version: CURRENT_CODE_VERSION
             });
-            if (rows.length === 0) return;
-            _lastSync = Date.now();
-            var r = await fetch(SUPABASE_URL + '/rest/v1/selecciones?on_conflict=evento_id,foto_index', {
-                method: 'POST',
-                headers: Object.assign({}, SB_H, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-                body: JSON.stringify(rows)
-            });
-            if (!r.ok) throw new Error('UPSERT ' + r.status);
-            _lastSync = Date.now();
         } catch(e) {
-            console.warn('[Supabase] Sync error:', e.message);
+            console.warn('[Supabase] Save error:', e.message);
         }
     }
 
-    // --- DELETE individual: borra 1 foto de Supabase (1 query) ---
-    async function sbDeleteSelection(foto_index) {
+    async function sbUpsertSelections() {
+        if (!sbDisponible) return;
+        var sels = typeof photoSelections !== 'undefined' ? Object.assign({}, photoSelections) : {};
+        Object.entries(sels).forEach(function(e) {
+            var idx = parseInt(e[0], 10);
+            if (hasAny(e[1])) sbSaveSelection(idx, e[1]);
+        });
+    }
+
+    async function sbDeleteSelection(fotoIndex) {
         if (!sbDisponible) return;
         try {
             var eid = await getEventoId();
             if (!eid) return;
-            _lastSync = Date.now();
-            await fetch(
-                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&foto_index=eq.' + foto_index,
-                { method: 'DELETE', headers: SB_H }
-            );
-            _lastSync = Date.now();
+            var remote = await getRemoteSelection(eid, fotoIndex);
+            var remoteMeta = readMeta(remote);
+            clockState = loadClockState();
+            var localClock = Number(clockState[String(fotoIndex)] || 0);
+
+            if (remoteMeta.clock > localClock && remoteMeta.sid !== sid) {
+                await sbReloadFromDB(eid);
+                return;
+            }
+
+            var clock = nextClock(fotoIndex, remoteMeta.clock);
+            var datos = selectionWithMeta({}, clock, true);
+            await writeRow({
+                evento_id: eid, session_id: sid, foto_index: fotoIndex,
+                impresion: false, invitacion: false,
+                descartada: false, ampliacion: false,
+                datos: datos, code_version: CURRENT_CODE_VERSION
+            });
         } catch(e) {
             console.warn('[Supabase] Delete error:', e.message);
         }
     }
 
-    // --- DELETE ALL: borra todas de Supabase ---
     async function sbDeleteAll() {
         if (!sbDisponible) return;
         try {
             var eid = await getEventoId();
             if (!eid) return;
+            var rows = await fetchRows(eid);
             _lastSync = Date.now();
-            await fetch(
-                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid,
-                { method: 'DELETE', headers: SB_H }
-            );
+            await Promise.all(rows.map(function(row) {
+                return sbDeleteSelection(row.foto_index);
+            }));
             _lastSync = Date.now();
         } catch(e) {
             console.warn('[Supabase] DeleteAll error:', e.message);
         }
     }
 
-    // --- LOAD: lee Supabase al abrir la pagina ---
+    function applyRows(rows) {
+        var sb = {};
+        rows.forEach(function(row) {
+            var meta = readMeta(row);
+            rememberClock(row.foto_index, meta.clock);
+            var sel = rowToSelection(row);
+            if (hasAny(sel)) sb[row.foto_index] = sel;
+        });
+        saveClockState();
+        if (typeof photoSelections !== 'undefined') photoSelections = sb;
+        try { localStorage.setItem(SB_KEY, JSON.stringify(sb)); } catch(e) {}
+        if (typeof renderGallery === 'function') renderGallery();
+        if (typeof updateStats === 'function') updateStats();
+        if (typeof updateFilterButtons === 'function') updateFilterButtons();
+        return sb;
+    }
+
+    async function fetchRows(eid) {
+        var r = await fetch(
+            SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index,datos,impresion,invitacion,descartada,ampliacion',
+            { headers: SB_H }
+        );
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+    }
+
     async function sbLoad() {
         try {
             var eid = await getEventoId();
             if (!eid) { sbDisponible = false; return; }
 
-            var r = await fetch(
-                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index,datos,impresion,invitacion,descartada,ampliacion',
-                { headers: SB_H }
-            );
-            if (!r.ok) throw new Error(r.status);
-            var rows = await r.json();
-
-            var sb = {};
-            rows.forEach(function(row) {
-                var sel = (row.datos && Object.keys(row.datos).length)
-                    ? row.datos
-                    : { impresion: row.impresion, invitacion: row.invitacion, descartada: row.descartada, ampliacion: row.ampliacion };
-                if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
-            });
-
-            // Si Supabase tiene datos, es la verdad absoluta.
-            // Solo usar localStorage como migracion si Supabase esta vacio.
+            var rows = await fetchRows(eid);
+            var hasRemoteRows = rows.length > 0;
             var local = {};
-            try { local = JSON.parse(localStorage.getItem(SB_KEY) || '{}'); } catch(e) {}
-
-            var merged;
-            if (Object.keys(sb).length > 0) {
-                // Supabase tiene datos: es la fuente de verdad
-                merged = sb;
-            } else if (Object.keys(local).length > 0) {
-                // Supabase vacio + local tiene datos: migrar a Supabase
-                merged = local;
-                sbUpsertSelections().catch(function(){});
-            } else {
-                merged = {};
+            if (!hasRemoteRows) {
+                try { local = JSON.parse(localStorage.getItem(SB_KEY) || '{}'); } catch(e) {}
             }
 
-            // Aplicar al UI y sobreescribir localStorage
-            if (typeof photoSelections !== 'undefined') {
-                photoSelections = merged;
+            var sb = applyRows(rows);
+
+            if (!hasRemoteRows && Object.keys(local).length > 0) {
+                photoSelections = local;
+                try { localStorage.setItem(SB_KEY, JSON.stringify(local)); } catch(e) {}
+                if (typeof renderGallery === 'function') renderGallery();
+                if (typeof updateStats === 'function') updateStats();
+                if (typeof updateFilterButtons === 'function') updateFilterButtons();
+                await sbUpsertSelections();
+                sb = local;
             }
-            try { localStorage.setItem(SB_KEY, JSON.stringify(merged)); } catch(e) {}
-            if (typeof loadSelections === 'function') loadSelections();
-            if (typeof renderGallery === 'function') renderGallery();
-            if (typeof updateStats === 'function') updateStats();
-            if (typeof updateFilterButtons === 'function') updateFilterButtons();
 
             sbRegistrarVisita();
-            mostrarBanner(merged);
+            mostrarBanner(hasRemoteRows ? sb : (photoSelections || {}));
             sbSubscribe(eid);
         } catch(e) {
             console.warn('[Supabase] Usando localStorage:', e.message);
@@ -148,7 +254,6 @@
         }
     }
 
-    // --- REALTIME: recibir cambios de otros navegadores ---
     function sbSubscribe(eid) {
         if (!window.supabase || !window.supabase.createClient) return;
         try {
@@ -161,9 +266,8 @@
                     schema: 'public',
                     table: 'selecciones',
                     filter: 'evento_id=eq.' + eid
-                }, function(payload) {
-                    // Ignorar eco de cambios propios (3s ventana)
-                    if (Date.now() - _lastSync < 3000) return;
+                }, function() {
+                    if (Date.now() - _lastSync < 1500) return;
                     sbReloadFromDB(eid);
                 })
                 .subscribe();
@@ -171,28 +275,18 @@
     }
 
     async function sbReloadFromDB(eid) {
+        if (_reloading) return;
+        _reloading = true;
         try {
-            var r = await fetch(
-                SUPABASE_URL + '/rest/v1/selecciones?evento_id=eq.' + eid + '&select=foto_index,datos,impresion,invitacion,descartada,ampliacion',
-                { headers: SB_H }
-            );
-            if (!r.ok) return;
-            var rows = await r.json();
-            var sb = {};
-            rows.forEach(function(row) {
-                var sel = (row.datos && Object.keys(row.datos).length)
-                    ? row.datos
-                    : { impresion: row.impresion, invitacion: row.invitacion, descartada: row.descartada, ampliacion: row.ampliacion };
-                if (Object.values(sel).some(function(v){ return v; })) sb[row.foto_index] = sel;
-            });
-            if (typeof photoSelections !== 'undefined') {
-                photoSelections = sb;
-            }
-            try { localStorage.setItem(SB_KEY, JSON.stringify(sb)); } catch(e) {}
-            if (typeof renderGallery === 'function') renderGallery();
-            if (typeof updateStats === 'function') updateStats();
-            if (typeof updateFilterButtons === 'function') updateFilterButtons();
-        } catch(e) {}
+            eid = eid || await getEventoId();
+            if (!eid) return;
+            var rows = await fetchRows(eid);
+            applyRows(rows);
+        } catch(e) {
+            console.warn('[Supabase] Reload error:', e.message);
+        } finally {
+            _reloading = false;
+        }
     }
 
     async function sbRegistrarVisita(pagina) {
@@ -209,22 +303,26 @@
 
     function mostrarBanner(sels) {
         if (document.getElementById('banner-sin-sel')) return;
-        if (Object.keys(sels).length > 0) return;
+        if (Object.keys(sels || {}).length > 0) return;
         var banner = document.createElement('div');
         banner.id = 'banner-sin-sel';
         banner.style.cssText = 'background:#78350f;color:#fcd34d;text-align:center;padding:12px 20px;font-size:.88rem;position:sticky;top:0;z-index:200;line-height:1.5;';
-        banner.innerHTML = '\uD83D\uDCF8 <strong>\u00a1Tus fotos est\u00e1n listas!</strong> A\u00fan no has seleccionado ninguna. \u00a1Empieza ahora! <button onclick="this.parentElement.remove()" style="margin-left:12px;background:transparent;border:1px solid #fcd34d;color:#fcd34d;padding:1px 8px;border-radius:4px;cursor:pointer;">\u00d7</button>';
+        banner.innerHTML = '📸 <strong>?Tus fotos están listas!</strong> Aún no has seleccionado ninguna. ?Empieza ahora! <button onclick="this.parentElement.remove()" style="margin-left:12px;background:transparent;border:1px solid #fcd34d;color:#fcd34d;padding:1px 8px;border-radius:4px;cursor:pointer;">?</button>';
         document.body.insertBefore(banner, document.body.firstChild);
     }
 
-    // Exponer funciones para que selector.js las llame directamente
     window.sbUpsertSelections = sbUpsertSelections;
-    window.sbDeleteSelection  = sbDeleteSelection;
-    window.sbDeleteAll         = sbDeleteAll;
-    window.sbRegistrarVisita   = sbRegistrarVisita;
-    window.sbDisponible        = function() { return sbDisponible; };
+    window.sbSaveSelection = sbSaveSelection;
+    window.sbDeleteSelection = sbDeleteSelection;
+    window.sbDeleteAll = sbDeleteAll;
+    window.sbRegistrarVisita = sbRegistrarVisita;
+    window.sbRefreshSelections = function() { return sbReloadFromDB(); };
+    window.sbDisponible = function() { return sbDisponible; };
 
     document.addEventListener('DOMContentLoaded', function() {
         sbLoad();
+        setInterval(function() {
+            if (!document.hidden) sbReloadFromDB();
+        }, 30000);
     });
 })();

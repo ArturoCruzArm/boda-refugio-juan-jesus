@@ -27,13 +27,37 @@ function loadSelections() {
     }
 }
 
-function saveSelections() {
+function normalizeSelection(selection) {
+    return {
+        ampliacion: !!(selection && selection.ampliacion),
+        impresion: !!(selection && selection.impresion),
+        invitacion: !!(selection && selection.invitacion),
+        descartada: !!(selection && selection.descartada)
+    };
+}
+
+function hasAnySelection(selection) {
+    const normalized = normalizeSelection(selection);
+    return normalized.ampliacion || normalized.impresion || normalized.invitacion || normalized.descartada;
+}
+
+function selectionsAreEqual(a, b) {
+    const left = normalizeSelection(a);
+    const right = normalizeSelection(b);
+    return left.ampliacion === right.ampliacion
+        && left.impresion === right.impresion
+        && left.invitacion === right.invitacion
+        && left.descartada === right.descartada;
+}
+
+function saveSelections(options) {
+    const shouldSync = !options || options.sync !== false;
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(photoSelections));
     } catch (error) {
         showToast('Error al guardar. Verifica el espacio del navegador.', 'error');
     }
-    if (typeof sbUpsertSelections === 'function') {
+    if (shouldSync && typeof sbUpsertSelections === 'function') {
         sbUpsertSelections().catch(function(e) { console.warn('[Supabase] Sync:', e.message); });
     }
 }
@@ -279,28 +303,45 @@ function saveCurrentSelections() {
     if (currentPhotoIndex === null) return;
 
     const selectedCategories = {};
-    let hasAnySelection = false;
-
     document.querySelectorAll(".option-btn").forEach(btn => {
         const category = btn.dataset.category;
-        const isSelected = btn.classList.contains("selected");
-        selectedCategories[category] = isSelected;
-        if (isSelected) hasAnySelection = true;
+        selectedCategories[category] = btn.classList.contains("selected");
     });
 
-    if (hasAnySelection) {
-        photoSelections[currentPhotoIndex] = selectedCategories;
+    persistPhotoSelection(currentPhotoIndex, selectedCategories);
+    updateStats();
+    updateFilterButtons();
+}
+
+function persistPhotoSelection(index, selection, options) {
+    const previousSelection = photoSelections[index] || {};
+    const normalized = normalizeSelection(selection);
+    const changed = !selectionsAreEqual(previousSelection, normalized);
+    const silent = options && options.silent;
+
+    if (!changed) {
+        saveSelections({ sync: false });
+        return false;
+    }
+
+    if (hasAnySelection(normalized)) {
+        photoSelections[index] = normalized;
+        saveSelections({ sync: false });
+        if (typeof sbSaveSelection === 'function') {
+            sbSaveSelection(index, normalized).catch(function(e) { console.warn('[Supabase] Save:', e.message); });
+        } else if (typeof sbUpsertSelections === 'function') {
+            sbUpsertSelections().catch(function(e) { console.warn('[Supabase] Sync:', e.message); });
+        }
     } else {
-        const idx = currentPhotoIndex;
-        delete photoSelections[idx];
+        delete photoSelections[index];
+        saveSelections({ sync: false });
         if (typeof sbDeleteSelection === 'function') {
-            sbDeleteSelection(idx).catch(function(e) { console.warn('[Supabase] Delete:', e.message); });
+            sbDeleteSelection(index).catch(function(e) { console.warn('[Supabase] Delete:', e.message); });
         }
     }
 
-    saveSelections();
-    updateStats();
-    updateFilterButtons();
+    if (!silent) showToast('Selección actualizada', 'success');
+    return true;
 }
 
 function updateNavigationButtons() {
@@ -317,31 +358,32 @@ function saveModalSelection() {
     if (currentPhotoIndex === null) return;
 
     const selectedCategories = {};
-    let hasAnySelection = false;
-
     document.querySelectorAll('.option-btn').forEach(btn => {
         const category = btn.dataset.category;
-        const isSelected = btn.classList.contains('selected');
-        selectedCategories[category] = isSelected;
-        if (isSelected) hasAnySelection = true;
+        selectedCategories[category] = btn.classList.contains('selected');
     });
 
-    if (hasAnySelection) {
-        photoSelections[currentPhotoIndex] = selectedCategories;
-    } else {
-        const idx = currentPhotoIndex;
-        delete photoSelections[idx];
-        if (typeof sbDeleteSelection === 'function') {
-            sbDeleteSelection(idx).catch(function(e) { console.warn('[Supabase] Delete:', e.message); });
-        }
-    }
-
-    saveSelections();
+    persistPhotoSelection(currentPhotoIndex, selectedCategories, { silent: true });
     renderGallery();
     updateStats();
     updateFilterButtons();
     closeModal();
     showToast('Selección guardada correctamente', 'success');
+}
+
+function deleteCurrentSelection() {
+    if (currentPhotoIndex === null) return;
+    const displayNumber = currentPhotoIndex + 1;
+    if (!confirm('¿Borrar la selección de la foto ' + displayNumber + '? Esta acción se sincronizará con todos los dispositivos.')) {
+        return;
+    }
+    persistPhotoSelection(currentPhotoIndex, {}, { silent: true });
+    document.querySelectorAll('.option-btn').forEach(btn => btn.classList.remove('selected'));
+    renderGallery();
+    updateStats();
+    updateFilterButtons();
+    closeModal();
+    showToast('Selección borrada', 'success');
 }
 
 // ========================================
@@ -481,6 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.modal-close').addEventListener('click', closeModal);
     document.getElementById('btnCancelSelection').addEventListener('click', closeModal);
     document.getElementById('btnSaveSelection').addEventListener('click', saveModalSelection);
+    document.getElementById('btnDeleteSelection').addEventListener('click', deleteCurrentSelection);
 
     document.querySelectorAll('.option-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -521,12 +564,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-        saveSelections();
+        saveSelections({ sync: false });
+    } else if (typeof sbRefreshSelections === 'function') {
+        sbRefreshSelections().catch(function(e) { console.warn('[Supabase] Refresh:', e.message); });
     }
 });
 
 window.addEventListener('beforeunload', (e) => {
-    saveSelections();
+    saveSelections({ sync: false });
 });
 
 // ========================================
